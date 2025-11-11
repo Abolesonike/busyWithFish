@@ -1,16 +1,20 @@
 from PyQt6.QtCore import QTimer
 from PyQt6.QtGui import QMovie
-from PyQt6.QtWidgets import QLabel
+from PyQt6.QtWidgets import QLabel, QVBoxLayout
 
+from character.PWidget import PWidget
 from utils.systemUtils import get_resource_path
 
 
-class GifLabel(QLabel):
+class GifWidget(PWidget):
     loop_count = 15  # 动画分割次数
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setScaledContents(True)
+    def __init__(self):
+        super().__init__()
+        # 用 QLabel 做画布
+        self.label = QLabel()
+        self.label.setScaledContents(True)
+        self.lay = QVBoxLayout(self)
 
         # 加载图片
         self.idx = 0
@@ -47,7 +51,8 @@ class GifLabel(QLabel):
     def _load(self, path):
         path = get_resource_path(path)
         self.movie = QMovie(path)
-        self.setMovie(self.movie)
+        self.label.setMovie(self.movie)
+        self.lay.addWidget(self.label)
 
     # ---- 播放 ----
     def animate(self):

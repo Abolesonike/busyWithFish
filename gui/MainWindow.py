@@ -1,15 +1,17 @@
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer
 from PyQt6.QtGui import QPixmap, QIcon, QAction
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QApplication, QSystemTrayIcon, QMenu
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QApplication, QSystemTrayIcon, QMenu, QMainWindow, QStackedWidget, \
+    QHBoxLayout
 from pynput import keyboard
 
-from character.GifLabel import GifLabel
+from character.GifWidget import GifWidget
+from character.WoodFishWidget import WoodFishWidget
 from utils.systemUtils import get_resource_path
 
 SNAP_TO_EDGE_MARGIN = 50  # 边缘吸附范围
 TRAY_ICON_IMG = 'resource/icon/fish.ico' # 任务栏图标
 
-class Win(QWidget):
+class Win(QMainWindow):
     trigger_key = pyqtSignal()
     drag_start_pos: QPoint | None = None
 
@@ -18,7 +20,7 @@ class Win(QWidget):
 
         # 窗口设置
         self.setWindowTitle("busy with fish")
-        self.setFixedSize(100, 100)
+        self.setFixedSize(130, 130)
         self.setWindowFlags(
             Qt.WindowType.WindowStaysOnTopHint |
             Qt.WindowType.FramelessWindowHint |
@@ -26,13 +28,23 @@ class Win(QWidget):
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
 
-        # 加载GIF
-        self.label = GifLabel()
-        lay = QVBoxLayout(self)
-        lay.addWidget(self.label)
+        # 内容堆叠
+        self.woodFishWidget = WoodFishWidget()
+        self.gifWidget = GifWidget()
+        self.stack = QStackedWidget()
+        self.stack.addWidget(self.woodFishWidget)
+        self.stack.addWidget(self.gifWidget)
+
+        self.currentWidget = self.woodFishWidget
+
+        # ---- 主布局 ----
+        central = QWidget()
+        self.setCentralWidget(central)
+        lay = QHBoxLayout(central)
+        lay.addWidget(self.stack)
 
         # 键盘监听
-        self.trigger_key.connect(self.label.animate)
+        self.trigger_key.connect(self.currentWidget.animate)
         self.listener = keyboard.Listener(on_press=self.on_key_press)
         self.listener.start()
 
@@ -54,9 +66,6 @@ class Win(QWidget):
         # 创建系统托盘图标
         self.create_tray_icon()
         self.tray_icon.show()
-
-        # 动画是否正在运行
-        self._animating = False
 
 
     # ---------- 系统托盘 ----------
@@ -81,19 +90,19 @@ class Win(QWidget):
         self.tray_menu.addMenu(self.character_menu)
 
         # 添加角色选项
-        self.wooden_fish_action = QAction("电子木鱼", self)
+        self.wooden_fish_action = QAction("木鱼", self)
         self.wooden_fish_action.triggered.connect(
-            lambda: self.label.switch_gif("resource/image/woodfish.png", 8))
+            lambda: self.switch_widget(0, self.woodFishWidget))
         self.character_menu.addAction(self.wooden_fish_action)
 
-        self.desktop_pet_action = QAction("pop cat", self)
-        self.desktop_pet_action.triggered.connect(
-            lambda: self.label.switch_gif("resource/gif/tsk.gif", 8))
+        self.desktop_pet_action = QAction("pop cat（施工中）", self)
+        # self.desktop_pet_action.triggered.connect(
+        #     lambda: self.label.switch_gif("resource/gif/tsk.gif", 8))
         self.character_menu.addAction(self.desktop_pet_action)
 
-        self.zen_circle_action = QAction("铁山靠", self)
+        self.zen_circle_action = QAction("铁山靠（优化中）", self)
         self.zen_circle_action.triggered.connect(
-            lambda: self.label.switch_gif("resource/gif/tsk.gif", 16))
+            lambda: self.switch_widget_gif(1, "resource/gif/tsk.gif", self.gifWidget, 4))
         self.character_menu.addAction(self.zen_circle_action)
 
         # 分隔线
@@ -107,6 +116,7 @@ class Win(QWidget):
         self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.activated.connect(self.icon_activated)
 
+    # 单击托盘图标切换显示/隐藏
     def icon_activated(self, reason):
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             # 单击托盘图标切换显示/隐藏
@@ -120,6 +130,20 @@ class Win(QWidget):
         else:
             self.hide()
 
+    # 切换窗口内容
+    def switch_widget(self, idx: int, currentWidget):
+        self.currentWidget = currentWidget
+        self.stack.setCurrentIndex(idx)
+        self.reBindKeyBoardListener()
+
+    # 切换窗口内容
+    def switch_widget_gif(self, idx: int, path: str, currentWidget, loop_count):
+        self.currentWidget = currentWidget
+        self.stack.setCurrentIndex(idx)
+        self.currentWidget.switch_gif(path, loop_count)
+        self.reBindKeyBoardListener()
+
+    # 退出应用程序
     def quit_app(self):
         # 退出应用程序
         QApplication.quit()
@@ -130,13 +154,18 @@ class Win(QWidget):
         self.hide()
         # 在系统托盘显示提示信息
         self.tray_icon.showMessage(
-            "电子木鱼",
-            "程序已最小化到系统托盘，双击图标可恢复窗口",
+            "busy with fish",
+            "bye ~",
             QSystemTrayIcon.MessageIcon.Information,
             2000
         )
         # 忽略关闭事件，防止程序退出
         event.ignore()
+
+    # 重新绑定键盘监听器
+    def reBindKeyBoardListener(self):
+        self.trigger_key.disconnect()
+        self.trigger_key.connect(self.currentWidget.animate)
 
     # ---------- 拖拽 start----------
     def mousePressEvent(self, event):
@@ -156,6 +185,8 @@ class Win(QWidget):
 
     # ---------- 边缘吸附 ----------
     def snap_to_edge(self):
+        if self.currentWidget.animating:  # 动画期间直接返回
+            return
         self.edge_snap_timer.stop()
         geom = self.frameGeometry()
         screen = self.screen().availableGeometry()
@@ -179,3 +210,4 @@ class Win(QWidget):
     # ---------- 键盘 ----------
     def on_key_press(self, _key):
         self.trigger_key.emit()
+        print(_key)
