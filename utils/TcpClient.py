@@ -25,26 +25,36 @@ class HeartbeatClient:
                     "from": self.cid,
                     "seq": int(time.time())  # 使用时间戳作为序列号
                 }
-                self.client_socket.sendall(json.dumps(heartbeat_packet).encode('utf-8'))
+                self.client_socket.sendall((json.dumps(heartbeat_packet) + "\n").encode('utf-8'))
                 print("Heartbeat sent")
-                time.sleep(5)  # 每30秒发送一次心跳
+                time.sleep(30)  # 每30秒发送一次心跳
             except Exception as e:
                 print(f"Error sending heartbeat: {e}")
                 break
 
     def receive_messages(self):
         """持续接收服务器消息"""
+        buffer = ""  # 用于存储接收到的数据
         while self.running:
             try:
                 data = self.client_socket.recv(1024)
                 if data:
-                    message = data.decode('utf-8')
-                    #packet = json.loads(message)
-                    print(f"Received: {message}")
-
-                    # 处理服务器的心跳确认
-                    # if packet.get('cmd') == 'heartBeat':
-                    #     print(f"Server acknowledged: {packet.get('data')}")
+                    # 将接收到的数据添加到缓冲区
+                    buffer += data.decode('utf-8')
+                    
+                    # 按行分割消息
+                    while '\n' in buffer:
+                        line, buffer = buffer.split('\n', 1)
+                        if line:
+                            print(f"Received: {line}")
+                            # 如果需要处理JSON数据，可以在这里解析
+                            # packet = json.loads(line)
+                            # 处理服务器的心跳确认
+                            # if packet.get('cmd') == 'heartBeat':
+                            #     print(f"Server acknowledged: {packet.get('data')}")
+                else:
+                    # 服务器关闭连接
+                    break
             except Exception as e:
                 print(f"Error receiving message: {e}")
                 break
@@ -57,7 +67,7 @@ class HeartbeatClient:
             "to": target,
             "seq": int(time.time())  # 使用时间戳作为序列号
         }
-        self.client_socket.sendall(json.dumps(heartbeat_packet).encode('utf-8'))
+        self.client_socket.sendall((json.dumps(heartbeat_packet) + "\n").encode('utf-8'))
         print("Heartbeat sent")
 
 
@@ -68,12 +78,8 @@ class HeartbeatClient:
         heartbeat_thread.daemon = True
         heartbeat_thread.start()
 
-        self.bind(2)
-
         # 主线程用于接收消息
         self.receive_messages()
-
-
 
     def stop(self):
         """停止客户端"""
@@ -88,22 +94,20 @@ class HeartbeatClient:
         else:
             key_value = _key.char
 
-        if key_value != "+":
-            return
-            
         heartbeat_packet = {
             "cmd": "send",
             "from": self.cid,
             "seq": int(time.time()),  # 使用时间戳作为序列号
             "body": key_value
         }
-        self.client_socket.send(json.dumps(heartbeat_packet).encode('utf-8'))
+        self.client_socket.send((json.dumps(heartbeat_packet) + "\n").encode('utf-8'))
 
 
 # 使用示例
 if __name__ == "__main__":
     client = HeartbeatClient('localhost', 9000, "1")
     try:
+        client.bind("2")
         client.start()
     except KeyboardInterrupt:
         print("Stopping client...")
