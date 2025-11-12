@@ -1,5 +1,6 @@
 # 获取资源文件绝对路径
 import os
+import secrets
 import sys
 
 
@@ -12,3 +13,7 @@ def get_resource_path( relative_path):
         base_path = os.path.abspath(".")
 
     return os.path.join(base_path, relative_path)
+
+def generate_uid(length=8):
+    """生成一个指定长度的UID"""
+    return secrets.token_hex(length // 2 + 1)[:length]

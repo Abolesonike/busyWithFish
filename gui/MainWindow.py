@@ -1,12 +1,12 @@
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer
 from PyQt6.QtGui import QPixmap, QIcon, QAction
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QApplication, QSystemTrayIcon, QMenu, QMainWindow, QStackedWidget, \
-    QHBoxLayout
+    QHBoxLayout, QDialog, QLineEdit, QLabel, QPushButton, QMessageBox
 from pynput import keyboard
 
 from character.GifWidget import GifWidget
 from character.WoodFishWidget import WoodFishWidget
-from utils.systemUtils import get_resource_path
+from utils.systemUtils import get_resource_path, generate_uid
 
 SNAP_TO_EDGE_MARGIN = 50  # 边缘吸附范围
 TRAY_ICON_IMG = 'resource/icon/fish.ico' # 任务栏图标
@@ -63,6 +63,9 @@ class Win(QMainWindow):
         img_path = get_resource_path(TRAY_ICON_IMG)
         self.pixmap = QPixmap(str(img_path))
 
+        # 客户端UID
+        self.uid = generate_uid()
+
         # 创建系统托盘图标
         self.create_tray_icon()
         self.tray_icon.show()
@@ -76,6 +79,22 @@ class Win(QMainWindow):
 
         # 创建托盘菜单
         self.tray_menu = QMenu(self)
+
+        # 添加UID显示动作
+        self.uid_action = QAction(f"UID: {self.uid}", self)
+        self.uid_action.setEnabled(True)  # 设置为可点击
+        self.uid_action.triggered.connect(self.copy_uid_to_clipboard)  # 连接复制函数
+        self.tray_menu.addAction(self.uid_action)
+
+        # 分隔线
+        self.tray_menu.addSeparator()
+
+        self.connect_action = QAction("连接", self)
+        self.connect_action.triggered.connect(self.show_connect_dialog)
+        self.tray_menu.addAction(self.connect_action)
+
+        # 分隔线
+        self.tray_menu.addSeparator()
 
         # 显示/隐藏动作
         self.toggle_action = QAction("显示/隐藏", self)
@@ -115,6 +134,62 @@ class Win(QMainWindow):
 
         self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.activated.connect(self.icon_activated)
+
+    def copy_uid_to_clipboard(self):
+        """ 复制UID """
+        clipboard = QApplication.clipboard()
+        clipboard.setText(self.uid)
+        # 可选：显示提示信息
+        self.tray_icon.showMessage(
+            "UID 已复制",
+            f"UID {self.uid} 已复制到剪贴板",
+            QSystemTrayIcon.MessageIcon.Information,
+            1000
+        )
+
+    def show_connect_dialog(self):
+        """ 显示连接对话框 """
+        dialog = QDialog(self)
+        dialog.setWindowTitle("连接到目标")
+        dialog.setFixedSize(300, 150)
+
+        layout = QVBoxLayout(dialog)
+
+        # 添加说明标签
+        label = QLabel("请输入目标UID:")
+        layout.addWidget(label)
+
+        # 添加输入框
+        uid_input = QLineEdit()
+        uid_input.setPlaceholderText("输入6位UID")
+        layout.addWidget(uid_input)
+
+        # 添加连接按钮
+        connect_btn = QPushButton("连接")
+        layout.addWidget(connect_btn)
+
+        # 连接按钮事件
+        def on_connect():
+            target_uid = uid_input.text().strip()
+            if len(target_uid) == 6 and target_uid.isdigit():
+                self.connect_to_target(target_uid)
+                dialog.accept()
+            else:
+                QMessageBox.warning(dialog, "输入错误", "请输入6位数字UID")
+
+        connect_btn.clicked.connect(on_connect)
+
+        dialog.exec()
+
+    def connect_to_target(self, target_uid):
+        """ 连接到目标UID """
+        # 这里实现实际的连接逻辑
+        self.tray_icon.showMessage(
+            "连接提示",
+            f"尝试连接到目标UID: {target_uid}",
+            QSystemTrayIcon.MessageIcon.Information,
+            2000
+        )
 
     # 单击托盘图标切换显示/隐藏
     def icon_activated(self, reason):
