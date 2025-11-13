@@ -14,11 +14,6 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     mainWindow = Win()
     
-    # 创建TCP客户端并设置主窗口引用
-    client = TcpClient('localhost', 9000, "1")
-    client.set_main_window(mainWindow)
-    client.start()
-    
     mainWindow.show()
     # 添加以下代码确保窗口在最前端显示
     mainWindow.activateWindow()

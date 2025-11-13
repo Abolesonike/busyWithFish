@@ -70,11 +70,11 @@ class WoodFishWidget(PWidget):
         self.original_geom = self.frameGeometry()  # 记录原始位置
 
     # ---------- 动画开始 ----------
-    def animate(self):
+    def animate(self, data=None):
         if self.animation.state() == QPropertyAnimation.State.Running:
             return
         self.animating = True  # 锁住吸附
-        self.show_merit()
+        self.show_merit(data)
         down_geom = self.original_geom.translated(0, DOWN_OFFSET)
         self.animation.setStartValue(self.original_geom)
         self.animation.setEndValue(down_geom)
@@ -92,9 +92,12 @@ class WoodFishWidget(PWidget):
 
     # ---------- 显示功德 ----------
     @pyqtSlot()
-    def show_merit(self):
+    def show_merit(self, data=None):
         self.merit += 1
-        self.merit_label.setText(f"功德 +{self.merit}")
+        if data:
+            self.merit_label.setText(f"{data}\n功德 +{self.merit}")
+        else:
+            self.merit_label.setText(f"功德 +{self.merit}")
         self.merit_label.adjustSize()
         # 居中放在窗口最顶部
         self.merit_label.move((self.width() - self.merit_label.width()) // 2, 10)

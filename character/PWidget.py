@@ -9,7 +9,7 @@ class PWidget(QWidget):
 
         self.animating = False
 
-    def animate(self):
+    def animate(self, data=None):
         return
 
     def _release_anim_lock(self):

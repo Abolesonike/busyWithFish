@@ -55,7 +55,7 @@ class GifWidget(PWidget):
         self.lay.addWidget(self.label)
 
     # ---- 播放 ----
-    def animate(self):
+    def animate(self, data=None):
         if self.playing:  # 还没播完，直接忽略
             return
         self._play_next_segment()

@@ -6,13 +6,17 @@ from pynput import keyboard
 
 from character.GifWidget import GifWidget
 from character.WoodFishWidget import WoodFishWidget
+from utils.TcpClient import TcpClient
 from utils.systemUtils import get_resource_path, generate_uid
 
 SNAP_TO_EDGE_MARGIN = 50  # 边缘吸附范围
 TRAY_ICON_IMG = 'resource/icon/fish.ico' # 任务栏图标
 
 class Win(QMainWindow):
+    # 键盘信号
     trigger_key = pyqtSignal()
+    # 远程触发信号
+    trigger_key_with_data = pyqtSignal(object)
     drag_start_pos: QPoint | None = None
 
     def __init__(self):
@@ -27,6 +31,16 @@ class Win(QMainWindow):
             Qt.WindowType.Tool
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        # ----- 数据初始化 ------ #
+        # 客户端UID
+        self.uid = generate_uid()
+        # 在线状态
+        self.is_online = True
+        # 目标UID
+        self.target_uid = "未连接"
+        # 目标是否在线
+        self.target_online = False
 
         # 内容堆叠
         self.woodFishWidget = WoodFishWidget()
@@ -48,6 +62,9 @@ class Win(QMainWindow):
         self.listener = keyboard.Listener(on_press=self.on_key_press)
         self.listener.start()
 
+        # 远程信号
+        self.trigger_key_with_data.connect(self.handle_remote_trigger)
+
         # 初始位置：屏幕右下角
         scr = QApplication.primaryScreen().geometry()
         self.move(scr.width() - self.width(),
@@ -63,15 +80,19 @@ class Win(QMainWindow):
         img_path = get_resource_path(TRAY_ICON_IMG)
         self.pixmap = QPixmap(str(img_path))
 
-        # 客户端UID
-        self.uid = generate_uid()
-
-        # 在线状态
-        self.is_online = True
-
         # 创建系统托盘图标
         self.create_tray_icon()
         self.tray_icon.show()
+
+
+        # 初始化客户端
+        self.client = TcpClient('1.14.69.161', 9100, self.uid)
+        self.client.set_main_window(self)
+        # 客户端默认在线并连接到服务器
+        self.client.start()
+
+
+
 
 
     # ---------- 系统托盘 ----------
@@ -142,9 +163,9 @@ class Win(QMainWindow):
         #     lambda: self.label.switch_gif("resource/gif/tsk.gif", 8))
         self.character_menu.addAction(self.desktop_pet_action)
 
-        self.zen_circle_action = QAction("铁山靠（优化中）", self)
-        self.zen_circle_action.triggered.connect(
-            lambda: self.switch_widget_gif(1, "resource/gif/tsk.gif", self.gifWidget, 4))
+        self.zen_circle_action = QAction("铁山靠（施工中）", self)
+        # self.zen_circle_action.triggered.connect(
+        #     lambda: self.switch_widget_gif(1, "resource/gif/tsk.gif", self.gifWidget, 4))
         self.character_menu.addAction(self.zen_circle_action)
 
         # 分隔线
@@ -181,6 +202,9 @@ class Win(QMainWindow):
     def set_online(self):
         """设置为在线状态"""
         self.is_online = True
+        self.client.start()
+        # 根据当前在线状态更新连接菜单项的可用性
+        self.connect_action.setEnabled(self.is_online)
         self.tray_icon.showMessage(
             "状态变更",
             "已设置为在线状态",
@@ -191,6 +215,9 @@ class Win(QMainWindow):
     def set_offline(self):
         """设置为离线状态"""
         self.is_online = False
+        self.client.stop()
+        # 根据当前在线状态更新连接菜单项的可用性
+        self.connect_action.setEnabled(self.is_online)
         self.tray_icon.showMessage(
             "状态变更",
             "已设置为离线状态",
@@ -222,11 +249,8 @@ class Win(QMainWindow):
         # 连接按钮事件
         def on_connect():
             target_uid = uid_input.text().strip()
-            if len(target_uid) == 6 and target_uid.isdigit():
-                self.connect_to_target(target_uid)
-                dialog.accept()
-            else:
-                QMessageBox.warning(dialog, "输入错误", "请输入6位数字UID")
+            self.connect_to_target(target_uid)
+            dialog.accept()
 
         connect_btn.clicked.connect(on_connect)
 
@@ -235,12 +259,42 @@ class Win(QMainWindow):
     def connect_to_target(self, target_uid):
         """ 连接到目标UID """
         # 这里实现实际的连接逻辑
-        self.tray_icon.showMessage(
-            "连接提示",
-            f"尝试连接到目标UID: {target_uid}",
-            QSystemTrayIcon.MessageIcon.Information,
-            2000
-        )
+        if target_uid == self.uid :
+            self.tray_icon.showMessage(
+                "警告",
+                "危险！别这样干 (._.`)",
+                QSystemTrayIcon.MessageIcon.Information,
+                2000
+            )
+            return
+
+        self.target_uid = target_uid
+        self.client.bind(target_uid)
+        # self.tray_icon.showMessage(
+        #     "连接提示",
+        #     f"尝试连接到目标UID: {target_uid}",
+        #     QSystemTrayIcon.MessageIcon.Information,
+        #     2000
+        # )
+
+    def update_target_status(self, status):
+        """更新UID状态指示器"""
+        if status == "bind offline":
+            self.target_online = False
+            text = "离线"
+        elif status == "bind online":
+            self.target_online = True
+            text = "在线"
+        elif status == "unbind":
+            self.target_online = False
+            self.target_uid = ""
+            text = "未绑定"
+        else:  # error
+            self.target_online = False
+            self.target_uid = ""
+            text = "连接错误"
+
+        self.connect_action.setText(f'连接（{self.target_uid} {text}）')
 
     def icon_activated(self, reason):
         """ 单击托盘图标切换显示/隐藏 """
@@ -334,5 +388,15 @@ class Win(QMainWindow):
 
     def on_key_press(self, _key):
         """按下键盘触发方法"""
-        self.trigger_key.emit()
-        print(_key)
+        if self.is_online and self.target_uid != "未连接" and self.target_online:
+            # 在线模式，发送给对方
+            self.client.on_key_press(_key)
+        else :
+            # 离线线模式，自己触发
+            self.trigger_key.emit()
+        #print(_key)
+
+    def handle_remote_trigger(self, data):
+        """处理远程触发的动画"""
+        print(f"Remote trigger with data: {data}")
+        self.currentWidget.animate(data)

@@ -16,9 +16,9 @@ class TcpClient:
         self.cid = cid
         # 主窗口引用
         self.main_window = None
-
-        self.listener = keyboard.Listener(on_press=self.on_key_press)
-        self.listener.start()
+        # 线程引用
+        self.heartbeat_thread = None
+        self.receive_thread = None
 
     def set_main_window(self, main_window):
         self.main_window = main_window
@@ -60,9 +60,17 @@ class TcpClient:
                                 # 处理绑定客户端发送的信息
                                 print(f"Server send: {body}")
                                 # self.main_window.currentWidget.animate()
+                                # 改为通过信号触发（假设主窗口有相应信号）
+                                if hasattr(self.main_window, 'trigger_key'):
+                                    self.main_window.trigger_key_with_data.emit(body)
                             elif packet.get('cmd') == 0x40:
                                 # 处理服务器的心跳确认
                                 print(f"Server heartbeat: {body}")
+
+                                # 处理绑定
+                                if body in ("unbind", "bind offline", "bind online"):
+                                    self.main_window.update_target_status(body)
+
                 else:
                     # 服务器关闭连接
                     break
@@ -79,24 +87,51 @@ class TcpClient:
         }
         self.send(heartbeat_packet)
         print(f"bind {target}")
+        # 发送心跳包，检查绑定对象状态
+        heartbeat_packet = {
+            "cmd": 0x40,
+            "from": self.cid
+        }
+        self.send(heartbeat_packet)
+
+    def offline(self):
+        """离线模式，注销服务器信息"""
+        offline_packet = {
+            "cmd": 0x50,
+            "from": self.cid
+        }
+        self.send(offline_packet)
+        print("offLine")
 
 
     def start(self):
         """启动客户端"""
+        self.running = True
         # 启动心跳线程
-        heartbeat_thread = threading.Thread(target=self.send_heartbeat)
-        heartbeat_thread.daemon = True
-        heartbeat_thread.start()
+        self.heartbeat_thread = threading.Thread(target=self.send_heartbeat)
+        self.heartbeat_thread.daemon = True
+        self.heartbeat_thread.start()
 
         # 启动消息接收线程
-        receive_thread = threading.Thread(target=self.receive_messages)
-        receive_thread.daemon = True
-        receive_thread.start()
+        self.receive_thread = threading.Thread(target=self.receive_messages)
+        self.receive_thread.daemon = True
+        self.receive_thread.start()
 
     def stop(self):
         """停止客户端"""
         self.running = False
-        self.client_socket.close()
+
+        # 等待线程结束（增加超时时间避免无限阻塞）
+        if self.heartbeat_thread and self.heartbeat_thread.is_alive():
+            self.heartbeat_thread.join(timeout=1)
+
+        if self.receive_thread and self.receive_thread.is_alive():
+            self.receive_thread.join(timeout=1)
+
+        # 通知服务器注销
+        self.offline()
+        # 更新绑定状态
+        self.main_window.update_target_status("unbind")
 
     def send(self, packet):
         """发送信息"""
