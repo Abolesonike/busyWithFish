@@ -1,5 +1,5 @@
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer
-from PyQt6.QtGui import QPixmap, QIcon, QAction
+from PyQt6.QtGui import QPixmap, QIcon, QAction, QActionGroup
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QApplication, QSystemTrayIcon, QMenu, QMainWindow, QStackedWidget, \
     QHBoxLayout, QDialog, QLineEdit, QLabel, QPushButton, QMessageBox
 from pynput import keyboard
@@ -66,6 +66,9 @@ class Win(QMainWindow):
         # 客户端UID
         self.uid = generate_uid()
 
+        # 在线状态
+        self.is_online = True
+
         # 创建系统托盘图标
         self.create_tray_icon()
         self.tray_icon.show()
@@ -96,10 +99,30 @@ class Win(QMainWindow):
         # 分隔线
         self.tray_menu.addSeparator()
 
-        # 显示/隐藏动作
-        self.toggle_action = QAction("显示/隐藏", self)
-        self.toggle_action.triggered.connect(self.toggle_window)
-        self.tray_menu.addAction(self.toggle_action)
+        # 在线/离线状态单选按钮组
+        self.status_menu = QMenu("状态", self)
+        self.tray_menu.addMenu(self.status_menu)
+        
+        # 创建动作组以确保单选行为
+        status_group = QActionGroup(self)
+        status_group.setExclusive(True)
+        
+        # 在线状态
+        self.online_action = QAction("在线", self)
+        self.online_action.setCheckable(True)
+        self.online_action.setChecked(True)
+        status_group.addAction(self.online_action)
+        self.status_menu.addAction(self.online_action)
+        
+        # 离线状态
+        self.offline_action = QAction("离线", self)
+        self.offline_action.setCheckable(True)
+        status_group.addAction(self.offline_action)
+        self.status_menu.addAction(self.offline_action)
+        
+        # 连接状态变更信号
+        self.online_action.triggered.connect(self.set_online)
+        self.offline_action.triggered.connect(self.set_offline)
 
         # 分隔线
         self.tray_menu.addSeparator()
@@ -127,6 +150,14 @@ class Win(QMainWindow):
         # 分隔线
         self.tray_menu.addSeparator()
 
+        # 显示/隐藏动作
+        self.toggle_action = QAction("显示/隐藏", self)
+        self.toggle_action.triggered.connect(self.toggle_window)
+        self.tray_menu.addAction(self.toggle_action)
+
+        # 分隔线
+        self.tray_menu.addSeparator()
+
         # 退出动作
         self.quit_action = QAction("退出", self)
         self.quit_action.triggered.connect(self.quit_app)
@@ -143,6 +174,26 @@ class Win(QMainWindow):
         self.tray_icon.showMessage(
             "UID 已复制",
             f"UID {self.uid} 已复制到剪贴板",
+            QSystemTrayIcon.MessageIcon.Information,
+            1000
+        )
+
+    def set_online(self):
+        """设置为在线状态"""
+        self.is_online = True
+        self.tray_icon.showMessage(
+            "状态变更",
+            "已设置为在线状态",
+            QSystemTrayIcon.MessageIcon.Information,
+            1000
+        )
+
+    def set_offline(self):
+        """设置为离线状态"""
+        self.is_online = False
+        self.tray_icon.showMessage(
+            "状态变更",
+            "已设置为离线状态",
             QSystemTrayIcon.MessageIcon.Information,
             1000
         )
@@ -191,40 +242,39 @@ class Win(QMainWindow):
             2000
         )
 
-    # 单击托盘图标切换显示/隐藏
     def icon_activated(self, reason):
+        """ 单击托盘图标切换显示/隐藏 """
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            # 单击托盘图标切换显示/隐藏
+            #
             self.toggle_window()
 
-    # 显示/隐藏窗口
     def toggle_window(self):
+        """显示/隐藏窗口"""
         if self.isHidden():
             self.show()
             self.activateWindow()
         else:
             self.hide()
 
-    # 切换窗口内容
     def switch_widget(self, idx: int, currentWidget):
+        """切换窗口内容 切换Widget"""
         self.currentWidget = currentWidget
         self.stack.setCurrentIndex(idx)
         self.reBindKeyBoardListener()
 
-    # 切换窗口内容
     def switch_widget_gif(self, idx: int, path: str, currentWidget, loop_count):
+        """GIF Widget使用，切换到Widget，并切换GIF内容"""
         self.currentWidget = currentWidget
         self.stack.setCurrentIndex(idx)
         self.currentWidget.switch_gif(path, loop_count)
         self.reBindKeyBoardListener()
 
-    # 退出应用程序
     def quit_app(self):
-        # 退出应用程序
+        """退出应用程序"""
         QApplication.quit()
 
-    # 重写关闭事件，使窗口关闭时最小化到托盘
     def closeEvent(self, event):
+        """重写关闭事件，使窗口关闭时最小化到托盘"""
         # 隐藏窗口
         self.hide()
         # 在系统托盘显示提示信息
@@ -237,12 +287,12 @@ class Win(QMainWindow):
         # 忽略关闭事件，防止程序退出
         event.ignore()
 
-    # 重新绑定键盘监听器
     def reBindKeyBoardListener(self):
+        """重新绑定键盘监听器，切换Widget时重新绑定"""
         self.trigger_key.disconnect()
         self.trigger_key.connect(self.currentWidget.animate)
 
-    # ---------- 拖拽 start----------
+    # ---------- 拖拽 start---------- #
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self.drag_start_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
@@ -256,10 +306,10 @@ class Win(QMainWindow):
         self.drag_start_pos = None
         self.original_geom = self.frameGeometry()  # 更新基准
         self.edge_snap_timer.start()
-    # ---------- 拖拽 end----------
+    # ---------- 拖拽 end---------- #
 
-    # ---------- 边缘吸附 ----------
     def snap_to_edge(self):
+        """边缘吸附"""
         if self.currentWidget.animating:  # 动画期间直接返回
             return
         self.edge_snap_timer.stop()
@@ -282,7 +332,7 @@ class Win(QMainWindow):
             self.move(x, y)
         self.original_geom = self.frameGeometry()
 
-    # ---------- 键盘 ----------
     def on_key_press(self, _key):
+        """按下键盘触发方法"""
         self.trigger_key.emit()
         print(_key)
