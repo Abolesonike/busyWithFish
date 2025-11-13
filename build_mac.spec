@@ -22,7 +22,7 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-app = BUNDLE(
+exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
@@ -38,9 +38,26 @@ app = BUNDLE(
     runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
-    argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
     icon='resource/icon/fish.ico'
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.zipfiles,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='busyWithFish'
+)
+
+app = BUNDLE(
+    coll,
+    name='busyWithFish.app',
+    icon='resource/icon/fish.ico',
+    bundle_identifier='com.busyWithFish.app'
 )
