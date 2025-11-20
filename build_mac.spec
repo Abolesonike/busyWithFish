@@ -6,9 +6,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[
-        ('resource', 'resource')
-    ],
+    datas=[('resource', 'resource')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -22,7 +20,7 @@ a = Analysis(
 
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
-app = BUNDLE(
+exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
@@ -38,9 +36,16 @@ app = BUNDLE(
     runtime_tmpdir=None,
     console=False,
     disable_windowed_traceback=False,
-    argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='resource/icon/fish.ico'
+    icon='resource/icon/fish.icns'  # ✅ 注意：macOS 用 .icns，不是 .ico
+)
+
+# ✅ 正确方式：BUNDLE 直接包裹 EXE（不需要 COLLECT）
+app = BUNDLE(
+    exe,
+    name='busyWithFish.app',
+    icon='resource/icon/fish.icns',
+    bundle_identifier='com.busyWithFish.app'
 )
