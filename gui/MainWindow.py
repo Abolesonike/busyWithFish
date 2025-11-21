@@ -159,8 +159,8 @@ class Win(QMainWindow):
         self.character_menu.addAction(self.wooden_fish_action)
 
         self.desktop_pet_action = QAction("pop cat（施工中）", self)
-        # self.desktop_pet_action.triggered.connect(
-        #     lambda: self.label.switch_gif("resource/gif/tsk.gif", 8))
+        self.desktop_pet_action.triggered.connect(
+            lambda: self.switch_widget_gif(1, "resource/gif/popcat.gif", self.gifWidget, 20))
         self.character_menu.addAction(self.desktop_pet_action)
 
         self.zen_circle_action = QAction("铁山靠（施工中）", self)
