@@ -14,7 +14,7 @@ TRAY_ICON_IMG = 'resource/icon/fish.ico' # 任务栏图标
 
 class Win(QMainWindow):
     # 键盘信号
-    trigger_key = pyqtSignal()
+    trigger_key = pyqtSignal(object)
     # 远程触发信号
     trigger_key_with_data = pyqtSignal(object)
     drag_start_pos: QPoint | None = None
@@ -158,9 +158,9 @@ class Win(QMainWindow):
             lambda: self.switch_widget(0, self.woodFishWidget))
         self.character_menu.addAction(self.wooden_fish_action)
 
-        self.desktop_pet_action = QAction("pop cat（施工中）", self)
+        self.desktop_pet_action = QAction("pop cat", self)
         self.desktop_pet_action.triggered.connect(
-            lambda: self.switch_widget_gif(1, "resource/gif/popcat.gif", self.gifWidget, 20))
+            lambda: self.switch_widget_gif(1, "resource/gif/popcat.gif", self.gifWidget, 3))
         self.character_menu.addAction(self.desktop_pet_action)
 
         self.zen_circle_action = QAction("铁山靠（施工中）", self)
@@ -393,7 +393,10 @@ class Win(QMainWindow):
             self.client.on_key_press(_key)
         else :
             # 离线线模式，自己触发
-            self.trigger_key.emit()
+            if self.stack.currentIndex() == 1 :
+                self.trigger_key.emit(_key)
+            else:
+                self.trigger_key.emit(None)
         #print(_key)
 
     def handle_remote_trigger(self, data):
