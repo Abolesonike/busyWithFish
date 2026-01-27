@@ -5,6 +5,7 @@ from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QLabel
 
 from character.PWidget import PWidget
+from utils.KeypressRecorder import KeypressRecorder
 from utils.systemUtils import get_resource_path
 
 # --------------- 可调参数 ---------------
@@ -26,7 +27,8 @@ class WoodFishWidget(PWidget):
         super().__init__()
 
         # --- 功德计数 ---
-        self.merit = 0
+        self.recorder = KeypressRecorder()
+        self.merit = self.recorder.get_daily_merit()  # 从数据中读取今天的功德值
         self.merit_label = QLabel(self)  # 专门显示文字
         self.merit_label.setStyleSheet(
             "color:#FFD700;font-size:14px;font-weight:bold;background:transparent;"

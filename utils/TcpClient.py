@@ -138,12 +138,7 @@ class TcpClient:
         self.client_socket.sendall((json.dumps(packet) + "\n").encode('utf-8'))
 
 
-    def on_key_press(self, _key):
-        # 将 Key 对象转换为可序列化的字符串
-        if isinstance(_key, keyboard.Key):
-            key_value = _key.name
-        else:
-            key_value = _key.char
+    def on_key_press(self, key_value):
 
         packet = {
             "cmd": 0x30,

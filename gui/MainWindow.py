@@ -8,6 +8,7 @@ from character.GifWidget import GifWidget
 from character.WoodFishWidget import WoodFishWidget
 from utils.TcpClient import TcpClient
 from utils.systemUtils import get_resource_path, generate_uid
+from utils.KeypressRecorder import KeypressRecorder
 
 SNAP_TO_EDGE_MARGIN = 50  # 边缘吸附范围
 TRAY_ICON_IMG = 'resource/icon/fish.ico' # 任务栏图标
@@ -91,6 +92,7 @@ class Win(QMainWindow):
         # 客户端默认在线并连接到服务器
         self.client.start()
 
+        self.keypressRecorder = KeypressRecorder()
 
 
 
@@ -388,9 +390,18 @@ class Win(QMainWindow):
 
     def on_key_press(self, _key):
         """按下键盘触发方法"""
+
+        # 将 Key 对象转换为可序列化的字符串
+        if isinstance(_key, keyboard.Key):
+            key_value = _key.name
+        else:
+            key_value = _key.char
+
+        # 记录按键
+        self.keypressRecorder.record_keypress(key_value)
         if self.is_online and self.target_uid != "未连接" and self.target_online:
             # 在线模式，发送给对方
-            self.client.on_key_press(_key)
+            self.client.on_key_press(key_value)
         else :
             # 离线线模式，自己触发
             if self.stack.currentIndex() == 1 :
