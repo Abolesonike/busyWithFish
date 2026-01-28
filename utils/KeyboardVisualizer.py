@@ -13,10 +13,10 @@ class KeyboardKeyWidget(QLabel):
         super().__init__()
         self.key_name = key_name
         self.press_count = press_count
-        self.max_count = 150  # 固定为150
+        self.max_count = max_count  # 固定为150
 
         # 根据按压次数计算颜色插值，从白色(255,255,255)渐变到深红色(178,34,34)
-        ratio = min(press_count / 150, 1.0)
+        ratio = min(press_count / self.max_count, 1.0)
         
         # 白色起始值 (255, 255, 255)
         start_r, start_g, start_b = 255, 255, 255
@@ -193,8 +193,8 @@ class KeyboardVisualizerDialog(QDialog):
             self.keyboard_grid.addWidget(hint_label, 0, 0)
             return
         
-        # 固定最大按压次数为150
-        max_count = 150
+        # 固定最大按压次数为100
+        max_count = 100
         
         # 定义键盘布局（简化版）
         keyboard_layout = [
