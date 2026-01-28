@@ -9,6 +9,7 @@ from character.WoodFishWidget import WoodFishWidget
 from utils.TcpClient import TcpClient
 from utils.systemUtils import get_resource_path, generate_uid
 from utils.KeypressRecorder import KeypressRecorder
+from utils.KeyboardVisualizer import KeyboardVisualizerDialog
 
 SNAP_TO_EDGE_MARGIN = 50  # 边缘吸附范围
 TRAY_ICON_IMG = 'resource/icon/fish.ico' # 任务栏图标
@@ -181,6 +182,14 @@ class Win(QMainWindow):
         # 分隔线
         self.tray_menu.addSeparator()
 
+        # 键盘可视化动作
+        self.keyboard_visualizer_action = QAction("按键统计可视化", self)
+        self.keyboard_visualizer_action.triggered.connect(self.open_keyboard_visualizer)
+        self.tray_menu.addAction(self.keyboard_visualizer_action)
+
+        # 分隔线
+        self.tray_menu.addSeparator()
+
         # 退出动作
         self.quit_action = QAction("退出", self)
         self.quit_action.triggered.connect(self.quit_app)
@@ -188,6 +197,15 @@ class Win(QMainWindow):
 
         self.tray_icon.setContextMenu(self.tray_menu)
         self.tray_icon.activated.connect(self.icon_activated)
+
+    def open_keyboard_visualizer(self):
+        """打开键盘可视化弹窗"""
+        # 检查是否已经打开了可视化窗口，如果没有则创建
+        if not hasattr(self, 'keyboard_visualizer'):
+            self.keyboard_visualizer = KeyboardVisualizerDialog(self)
+        self.keyboard_visualizer.show()
+        self.keyboard_visualizer.raise_()
+        self.keyboard_visualizer.activateWindow()
 
     def copy_uid_to_clipboard(self):
         """ 复制UID """
