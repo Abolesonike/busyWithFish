@@ -194,7 +194,7 @@ class KeyboardVisualizerDialog(QDialog):
             return
         
         # 固定最大按压次数为100
-        max_count = 100
+        max_count = 500
         
         # 定义键盘布局（简化版）
         keyboard_layout = [
