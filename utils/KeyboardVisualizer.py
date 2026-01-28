@@ -228,16 +228,15 @@ class KeyboardVisualizerDialog(QDialog):
                 # 创建按键控件
                 key_widget = KeyboardKeyWidget(key, press_count, max_count)
 
-                # 添加到网格，如果按键是空格则跨越3列
                 if key == 'space':
                     self.keyboard_grid.addWidget(key_widget, row_idx, col_idx, 1, 4)
-                    col_idx += 4  # 空格键占用3个位置
+                    col_idx += 4  # 空格键占用4个位置
                 elif key == 'enter':
                     self.keyboard_grid.addWidget(key_widget, row_idx, col_idx, 1, 2)
-                    col_idx += 2  # 空格键占用3个位置
-                elif key == 'shift_r':
+                    col_idx += 2  # enter键占用3个位置
+                elif key == 'shift':
                     self.keyboard_grid.addWidget(key_widget, row_idx, col_idx, 1, 2)
-                    col_idx += 2  # 右Shift键占用2个位置
+                    col_idx += 2  # 左Shift键占用2个位置
                 else:
                     self.keyboard_grid.addWidget(key_widget, row_idx, col_idx, 1, 1)
                     col_idx += 1
