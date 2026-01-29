@@ -1,8 +1,6 @@
-import json
-import os
-from PyQt6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QPushButton, QDialog, QScrollArea, QFrame
-from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QPainter, QColor, QBrush, QFont
+from datetime import date
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QGridLayout, QLabel, QPushButton, QDialog, QScrollArea, QFrame, QHBoxLayout, QDateEdit
+from PyQt6.QtCore import Qt
 from utils.KeypressRecorder import KeypressRecorder
 
 
@@ -129,6 +127,23 @@ class KeyboardVisualizerDialog(QDialog):
         self.layout = QVBoxLayout()
         self.setLayout(self.layout)
         
+        # 添加日期选择控件
+        date_layout = QHBoxLayout()
+        date_label = QLabel("选择日期:")
+        self.date_edit = QDateEdit()
+        self.date_edit.setDate(date.today())  # 默认设置为今天
+        self.date_edit.setDisplayFormat("yyyy-MM-dd")
+        self.date_edit.setCalendarPopup(True)
+        # 当日期改变时自动刷新数据
+        self.date_edit.dateChanged.connect(self.refresh_data)
+        # 禁止键盘输入，但仍允许通过日历选择
+        self.date_edit.lineEdit().setReadOnly(True)
+        
+        date_layout.addWidget(date_label)
+        date_layout.addWidget(self.date_edit)
+        
+        self.layout.addLayout(date_layout)
+        
         # 创建滚动区域以支持大量按键
         scroll_area = QScrollArea()
         scroll_area.setWidgetResizable(True)
@@ -148,11 +163,6 @@ class KeyboardVisualizerDialog(QDialog):
         # 添加键盘网格到主布局
         main_layout.addLayout(self.keyboard_grid)
         
-        # 添加刷新按钮
-        refresh_btn = QPushButton("刷新数据")
-        refresh_btn.clicked.connect(self.refresh_data)
-        main_layout.addWidget(refresh_btn)
-        
         # 将滚动区域添加到主布局
         self.layout.addWidget(scroll_area)
         
@@ -170,30 +180,21 @@ class KeyboardVisualizerDialog(QDialog):
             if widget is not None:
                 widget.setParent(None)
         
-        # 获取最新的按键记录
-        all_records = self.keypress_recorder.get_records()
+        # 获取选定的日期
+        selected_date = self.date_edit.date().toString("yyyy-MM-dd")
         
-        if not all_records:
-            # 如果没有记录，显示提示
-            hint_label = QLabel("暂无按键记录数据")
-            hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            hint_label.setStyleSheet("font-size: 14px; color: gray;")
-            self.keyboard_grid.addWidget(hint_label, 0, 0)
-            return
-        
-        # 获取今天的按键记录
-        latest_record = all_records[-1]  # 获取最新的记录
-        keys_data = latest_record.get('keys', {})
+        # 获取指定日期的按键记录
+        keys_data = self.keypress_recorder.get_daily_all_keys(selected_date)
         
         if not keys_data:
-            # 如果今天没有按键记录，显示提示
-            hint_label = QLabel("今天暂无按键记录")
+            # 如果指定日期没有按键记录，显示提示
+            hint_label = QLabel(f"{selected_date} 暂无按键记录")
             hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             hint_label.setStyleSheet("font-size: 14px; color: gray;")
             self.keyboard_grid.addWidget(hint_label, 0, 0)
             return
         
-        # 固定最大按压次数为100
+        # 固定最大按压次数为500
         max_count = 500
         
         # 定义键盘布局（简化版）
@@ -264,3 +265,9 @@ class KeyboardVisualizerDialog(QDialog):
                 self.keyboard_grid.addWidget(key_widget, row_pos, col_pos)
 
             row_idx += (len(extra_keys) // len(keyboard_layout[0])) + 1
+
+    def showEvent(self, event):
+        # 每次打开弹窗时重置为默认状态（当前日期）
+        self.date_edit.setDate(date.today())
+        self.refresh_data()
+        super().showEvent(event)
