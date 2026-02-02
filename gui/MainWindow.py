@@ -10,6 +10,8 @@ from utils.TcpClient import TcpClient
 from utils.systemUtils import get_resource_path, generate_uid
 from utils.KeypressRecorder import KeypressRecorder
 from utils.KeyboardVisualizer import KeyboardVisualizerDialog
+from utils.MouseHeatmapTracker import MouseHeatmapTracker
+from utils.MouseHeatmapVisualizer import MouseHeatmapDialog
 
 SNAP_TO_EDGE_MARGIN = 50  # 边缘吸附范围
 TRAY_ICON_IMG = 'resource/icon/fish.ico' # 任务栏图标
@@ -94,6 +96,15 @@ class Win(QMainWindow):
         self.client.start()
 
         self.keypressRecorder = KeypressRecorder()
+
+        # 鼠标热力图跟踪器（后台线程）
+        self.mouse_heatmap_tracker = MouseHeatmapTracker(
+            cell_size=48,
+            data_root="data/mouse_heatmap",
+            sample_interval_ms=50,
+            flush_interval_s=30.0,
+        )
+        self.mouse_heatmap_tracker.start()
 
 
 
@@ -187,6 +198,11 @@ class Win(QMainWindow):
         self.keyboard_visualizer_action.triggered.connect(self.open_keyboard_visualizer)
         self.tray_menu.addAction(self.keyboard_visualizer_action)
 
+        # 鼠标热力图动作
+        self.mouse_heatmap_action = QAction("鼠标热力图", self)
+        self.mouse_heatmap_action.triggered.connect(self.open_mouse_heatmap)
+        self.tray_menu.addAction(self.mouse_heatmap_action)
+
         # 分隔线
         self.tray_menu.addSeparator()
 
@@ -206,6 +222,21 @@ class Win(QMainWindow):
         self.keyboard_visualizer.show()
         self.keyboard_visualizer.raise_()
         self.keyboard_visualizer.activateWindow()
+
+    def open_mouse_heatmap(self):
+        """打开鼠标热力图弹窗"""
+        # 先刷新一次热力图数据到文件
+        try:
+            if hasattr(self, "mouse_heatmap_tracker"):
+                self.mouse_heatmap_tracker.flush()
+        except Exception:
+            pass
+        if not hasattr(self, 'mouse_heatmap_dialog'):
+            self.mouse_heatmap_dialog = MouseHeatmapDialog(self)
+        self.mouse_heatmap_dialog.refresh_image()
+        self.mouse_heatmap_dialog.show()
+        self.mouse_heatmap_dialog.raise_()
+        self.mouse_heatmap_dialog.activateWindow()
 
     def copy_uid_to_clipboard(self):
         """ 复制UID """
@@ -345,6 +376,12 @@ class Win(QMainWindow):
 
     def quit_app(self):
         """退出应用程序"""
+        # 停止后台线程
+        try:
+            if hasattr(self, "mouse_heatmap_tracker"):
+                self.mouse_heatmap_tracker.stop()
+        except Exception:
+            pass
         QApplication.quit()
 
     def closeEvent(self, event):
