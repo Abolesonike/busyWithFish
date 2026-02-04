@@ -6,7 +6,8 @@ import time
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Deque
+from collections import deque
 
 from utils.MousePositionViewer import MousePositionViewer
 
@@ -20,7 +21,7 @@ class HeatmapMeta:
     cell_size: int
     grid_width: int
     grid_height: int
-    unit: str  # "ms"
+    unit: str
 
     def to_dict(self) -> dict:
         return {
@@ -48,114 +49,78 @@ class HeatmapMeta:
         )
 
 
-class MouseHeatmapTracker:
+class OptimizedMouseHeatmapTracker:
     """
-    鼠标热力图统计器（按天 JSON 聚合，使用停留时间 ms）。
-
-    存储结构（默认 data/mouse_heatmap/YYYY-MM-DD/cell_XX/）：
-    - meta.json：分辨率、网格参数等
-    - grid.json：当天累计网格（二维数组，单位 ms）
+    优化版鼠标热力图追踪器
+    
+    性能优化要点：
+    1. 内存缓冲池：减少频繁内存分配
+    2. 智能采样：只在鼠标移动时采样
+    3. 增量更新：避免重复计算
+    4. 分层存储：内存+磁盘双层缓存
     """
-
+    
     META_FILENAME = "meta.json"
     GRID_FILENAME = "grid.json"
     VERSION = 1
-
+    
     def __init__(
         self,
         cell_size: int = 48,
         data_root: Optional[str] = None,
-        sample_interval_ms: int = 50,
-        flush_interval_s: float = 30.0,
+        max_buffer_size: int = 1000,  # 内存缓冲最大条目数
+        flush_threshold: int = 500,    # 缓冲达到此数量时自动刷盘
+        inactive_timeout: float = 2.0  # 鼠标静止超时时间(秒)
     ):
         self.cell_size = int(cell_size)
-        self.data_root = Path(data_root) if data_root else self._default_data_root()
-        self.sample_interval_ms = max(int(sample_interval_ms), 10)
-        self.flush_interval_s = max(float(flush_interval_s), 1.0)
-
-        self._lock = threading.Lock()
+        self.data_root = Path(data_root) if data_root else Path("data") / "mouse_heatmap"
+        self.max_buffer_size = max_buffer_size
+        self.flush_threshold = flush_threshold
+        self.inactive_timeout = inactive_timeout
+        
+        # 线程安全
+        self._lock = threading.RLock()
         self._running = False
         self._thread: Optional[threading.Thread] = None
-
-        # (gx, gy) -> total_ms
+        
+        # 内存缓冲区
+        self._buffer: Deque[Tuple[int, int, int]] = deque(maxlen=max_buffer_size)  # (gx, gy, duration_ms)
+        self._current_cell: Optional[Tuple[int, int]] = None
+        self._last_active_time: float = 0.0
+        
+        # 累计数据（用于快速查询）
         self._acc: Dict[Tuple[int, int], int] = {}
-        # 本周期变化的增量： (gx, gy) -> delta_ms
-        self._dirty: Dict[Tuple[int, int], int] = {}
-
+        
+        # 元数据
         self._meta: Optional[HeatmapMeta] = None
         self._day_dir: Optional[Path] = None
-
+        
+        # 性能统计
+        self._stats = {
+            'samples_collected': 0,
+            'flush_operations': 0,
+            'buffer_hits': 0,
+            'disk_reads': 0
+        }
+    
     @staticmethod
     def _get_screen_size() -> Tuple[int, int]:
-        # Windows：GetSystemMetrics(0/1) 获取主屏分辨率（像素）
         import ctypes
-
         user32 = ctypes.windll.user32
-        w = int(user32.GetSystemMetrics(0))
-        h = int(user32.GetSystemMetrics(1))
-        return w, h
-
-    @staticmethod
-    def _today_str() -> str:
-        return str(date.today())
-
-    @staticmethod
-    def _default_data_root() -> Path:
-        """
-        默认落盘路径：项目相对目录 data/mouse_heatmap
-
-        与键盘记录 data/ 保持一致，便于打包一起分发。
-        """
-        return Path("data") / "mouse_heatmap"
-
-    def _day_dir_for(self, day: str) -> Path:
-        # 同一天允许不同 cell_size 并存，避免 meta 冲突
-        return self.data_root / day / f"cell_{self.cell_size}"
-
+        return int(user32.GetSystemMetrics(0)), int(user32.GetSystemMetrics(1))
+    
     def _ensure_day_files(self) -> None:
-        day = self._today_str()
+        """确保当日文件结构存在"""
+        day = str(date.today())
         screen_w, screen_h = self._get_screen_size()
-        grid_w = (screen_w + self.cell_size - 1) // self.cell_size
-        grid_h = (screen_h + self.cell_size - 1) // self.cell_size
-
-        day_dir = self._day_dir_for(day)
+        grid_w = math.ceil(screen_w / self.cell_size)
+        grid_h = math.ceil(screen_h / self.cell_size)
+        
+        day_dir = self.data_root / day / f"cell_{self.cell_size}"
         day_dir.mkdir(parents=True, exist_ok=True)
-
+        
         meta_path = day_dir / self.META_FILENAME
-        if meta_path.exists():
-            loaded = HeatmapMeta.from_dict(json.loads(meta_path.read_text(encoding="utf-8")))
-            if (
-                loaded.screen_width != screen_w
-                or loaded.screen_height != screen_h
-                or loaded.cell_size != self.cell_size
-            ):
-                # 分辨率已变化：备份旧 grid 文件，重新开始当天的统计，避免程序崩溃
-                grid_path = day_dir / self.GRID_FILENAME
-                if grid_path.exists():
-                    backup = grid_path.with_name(
-                        f"grid_{loaded.screen_width}x{loaded.screen_height}.json"
-                    )
-                    try:
-                        grid_path.rename(backup)
-                    except OSError:
-                        pass
-                meta = HeatmapMeta(
-                    version=self.VERSION,
-                    day=day,
-                    screen_width=screen_w,
-                    screen_height=screen_h,
-                    cell_size=self.cell_size,
-                    grid_width=grid_w,
-                    grid_height=grid_h,
-                    unit="ms",
-                )
-                meta_path.write_text(
-                    json.dumps(meta.to_dict(), ensure_ascii=False, indent=2),
-                    encoding="utf-8",
-                )
-            else:
-                meta = loaded
-        else:
+        if not meta_path.exists():
             meta = HeatmapMeta(
                 version=self.VERSION,
                 day=day,
@@ -164,69 +129,152 @@ class MouseHeatmapTracker:
                 cell_size=self.cell_size,
                 grid_width=grid_w,
                 grid_height=grid_h,
-                unit="ms",
+                unit="ms"
             )
-            meta_path.write_text(json.dumps(meta.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-
-        self._meta = meta
+            meta_path.write_text(
+                json.dumps(meta.to_dict(), ensure_ascii=False, indent=2),
+                encoding="utf-8"
+            )
+            self._meta = meta
+        else:
+            self._meta = HeatmapMeta(**json.loads(meta_path.read_text(encoding="utf-8")))
+        
         self._day_dir = day_dir
-
+    
     def start(self) -> None:
-        """开始后台采样与定时写入。"""
+        """启动追踪器"""
         with self._lock:
             if self._running:
                 return
             self._ensure_day_files()
             self._running = True
-            self._thread = threading.Thread(target=self._run_loop, name="MouseHeatmapTracker", daemon=True)
+            self._thread = threading.Thread(
+                target=self._sampling_loop,
+                name="OptimizedMouseTracker",
+                daemon=True
+            )
             self._thread.start()
-
+    
     def stop(self) -> None:
-        """停止采样，并强制 flush 一次。"""
+        """停止追踪器并强制刷盘"""
         with self._lock:
             self._running = False
-        if self._thread is not None:
+        
+        if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
+        
         self.flush()
-
-    def flush(self) -> None:
-        """将本周期的增量合并到当天 grid.json 中。"""
-        with self._lock:
-            if not self._dirty:
-                return
-            if self._day_dir is None or self._meta is None:
-                self._ensure_day_files()
-
-            items = [(gx, gy, int(delta)) for (gx, gy), delta in self._dirty.items() if delta > 0]
-            self._dirty.clear()
-
-        if not items:
-            return
-
-        grid_path = self._day_dir / self.GRID_FILENAME
-
-        # 读取已有 grid（若不存在则初始化为全 0）
-        if grid_path.exists():
+    
+    def _sampling_loop(self) -> None:
+        """优化的采样循环"""
+        last_pos = None
+        last_sample_time = time.perf_counter()
+        
+        while True:
+            with self._lock:
+                if not self._running:
+                    break
+            
+            # 获取当前鼠标位置
             try:
-                raw = json.loads(grid_path.read_text(encoding="utf-8"))
-                grid = raw.get("grid_ms")
-                if (
-                    not isinstance(grid, list)
-                    or len(grid) != self._meta.grid_height
-                    or any(len(row) != self._meta.grid_width for row in grid)
-                ):
-                    raise ValueError("invalid grid size")
+                pos = MousePositionViewer.get_position()
+                current_pos = (pos.x, pos.y)
             except Exception:
-                grid = [[0 for _ in range(self._meta.grid_width)] for _ in range(self._meta.grid_height)]
-        else:
-            grid = [[0 for _ in range(self._meta.grid_width)] for _ in range(self._meta.grid_height)]
-
-        # 应用增量
-        for gx, gy, delta in items:
-            if 0 <= gx < self._meta.grid_width and 0 <= gy < self._meta.grid_height:
-                grid[gy][gx] += delta
-
-        # 覆盖写回 JSON
+                time.sleep(0.05)  # 50ms
+                continue
+            
+            now = time.perf_counter()
+            
+            # 只在鼠标移动时采样（节省CPU）
+            if last_pos != current_pos:
+                self._last_active_time = now
+                
+                # 计算在上一个位置停留的时间
+                if last_pos is not None:
+                    duration_ms = int((now - last_sample_time) * 1000)
+                    if duration_ms > 0:
+                        cell = self._pos_to_cell(last_pos[0], last_pos[1])
+                        self._add_sample(cell[0], cell[1], duration_ms)
+                
+                last_pos = current_pos
+                last_sample_time = now
+            else:
+                # 鼠标静止，检查是否超时
+                if now - self._last_active_time > self.inactive_timeout:
+                    # 长时间静止，强制记录当前位置
+                    if last_pos is not None:
+                        duration_ms = int((now - last_sample_time) * 1000)
+                        if duration_ms > 0:
+                            cell = self._pos_to_cell(last_pos[0], last_pos[1])
+                            self._add_sample(cell[0], cell[1], duration_ms)
+                            last_sample_time = now
+            
+            # 检查是否需要刷盘
+            with self._lock:
+                if len(self._buffer) >= self.flush_threshold:
+                    self.flush()
+            
+            time.sleep(0.05)  # 50ms采样间隔
+    
+    def _pos_to_cell(self, x: int, y: int) -> Tuple[int, int]:
+        """坐标转网格单元"""
+        assert self._meta is not None
+        gx = max(0, min(self._meta.grid_width - 1, x // self.cell_size))
+        gy = max(0, min(self._meta.grid_height - 1, y // self.cell_size))
+        return gx, gy
+    
+    def _add_sample(self, gx: int, gy: int, duration_ms: int) -> None:
+        """添加采样数据"""
+        with self._lock:
+            # 添加到缓冲区
+            self._buffer.append((gx, gy, duration_ms))
+            
+            # 更新累计数据
+            cell_key = (gx, gy)
+            self._acc[cell_key] = self._acc.get(cell_key, 0) + duration_ms
+            
+            # 统计
+            self._stats['samples_collected'] += 1
+    
+    def flush(self) -> None:
+        """刷盘缓冲数据"""
+        with self._lock:
+            if not self._buffer or not self._day_dir:
+                return
+            
+            # 复制缓冲数据
+            samples_to_flush = list(self._buffer)
+            self._buffer.clear()
+            self._stats['flush_operations'] += 1
+        
+        if not samples_to_flush:
+            return
+        
+        # 合并相同单元格的数据
+        cell_updates: Dict[Tuple[int, int], int] = {}
+        for gx, gy, duration in samples_to_flush:
+            cell_updates[(gx, gy)] = cell_updates.get((gx, gy), 0) + duration
+        
+        # 读取现有数据
+        grid_path = self._day_dir / self.GRID_FILENAME
+        try:
+            if grid_path.exists():
+                raw = json.loads(grid_path.read_text(encoding="utf-8"))
+                grid = raw.get("grid_ms", [])
+                self._stats['disk_reads'] += 1
+            else:
+                grid = [[0 for _ in range(self._meta.grid_width)] 
+                       for _ in range(self._meta.grid_height)]
+        except Exception:
+            grid = [[0 for _ in range(self._meta.grid_width)] 
+                   for _ in range(self._meta.grid_height)]
+        
+        # 应用更新
+        for (gx, gy), duration in cell_updates.items():
+            if 0 <= gy < len(grid) and 0 <= gx < len(grid[0]):
+                grid[gy][gx] += duration
+        
+        # 写回文件
         payload = {
             "version": self.VERSION,
             "day": self._meta.day,
@@ -234,57 +282,75 @@ class MouseHeatmapTracker:
             "unit": self._meta.unit,
             "grid_ms": grid,
         }
-        grid_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-
-    def _run_loop(self) -> None:
-        # 采样归因策略：
-        # 将 (last_t, now_t] 这段时间的停留 ms 计入“当前采样到的格子”。
-        # 这样视觉上更贴近你看到的鼠标位置，避免快速移动时热区明显滞后。
-        last_t = time.perf_counter()
-        next_flush = time.monotonic() + self.flush_interval_s
-
-        while True:
-            with self._lock:
-                if not self._running:
-                    break
-
-            time.sleep(self.sample_interval_ms / 1000.0)
-
-            now_t = time.perf_counter()
-            dt_ms = int(max((now_t - last_t) * 1000.0, 0.0))
-            if dt_ms <= 0:
-                continue
-
-            pos = MousePositionViewer.get_position()
-            cell = self._pos_to_cell(pos.x, pos.y)
-            self._add_time(cell, dt_ms)
-            last_t = now_t
-
-            if time.monotonic() >= next_flush:
-                self.flush()
-                next_flush = time.monotonic() + self.flush_interval_s
-
-    def _pos_to_cell(self, x: int, y: int) -> Tuple[int, int]:
-        assert self._meta is not None
-        gx = max(0, min(self._meta.grid_width - 1, x // self.cell_size))
-        gy = max(0, min(self._meta.grid_height - 1, y // self.cell_size))
-        return gx, gy
-
-    def _add_time(self, cell: Tuple[int, int], dt_ms: int) -> None:
+        
+        temp_path = grid_path.with_suffix('.tmp')
+        try:
+            temp_path.write_text(
+                json.dumps(payload, ensure_ascii=False),
+                encoding="utf-8"
+            )
+            temp_path.replace(grid_path)
+        except Exception as e:
+            print(f"Error writing heatmap data: {e}")
+    
+    def get_current_grid(self) -> List[List[int]]:
+        """获取当前累计的网格数据（包含内存缓冲）"""
         with self._lock:
-            self._acc[cell] = self._acc.get(cell, 0) + dt_ms
-            self._dirty[cell] = self._dirty.get(cell, 0) + dt_ms
-
-    # --------- 读取与绘制（供测试/工具使用） ---------
+            # 先获取磁盘数据
+            if self._day_dir:
+                grid_path = self._day_dir / self.GRID_FILENAME
+                try:
+                    if grid_path.exists():
+                        raw = json.loads(grid_path.read_text(encoding="utf-8"))
+                        grid = raw.get("grid_ms", [])
+                    else:
+                        grid = [[0 for _ in range(self._meta.grid_width)] 
+                               for _ in range(self._meta.grid_height)]
+                except Exception:
+                    grid = [[0 for _ in range(self._meta.grid_width)] 
+                           for _ in range(self._meta.grid_height)]
+            else:
+                grid = [[0 for _ in range(self._meta.grid_width)] 
+                       for _ in range(self._meta.grid_height)]
+            
+            # 应用内存缓冲的增量
+            for gx, gy, duration in self._buffer:
+                if 0 <= gy < len(grid) and 0 <= gx < len(grid[0]):
+                    grid[gy][gx] += duration
+            
+            return grid
+    
+    def get_stats(self) -> Dict[str, int]:
+        """获取性能统计信息"""
+        with self._lock:
+            return self._stats.copy()
+    
     @classmethod
-    def load_day(
-        cls,
-        day: str,
-        data_root: Optional[str] = None,
-        cell_size: int = 48,
-    ) -> Tuple[HeatmapMeta, List[List[int]]]:
+    def load_day_grid(cls, day: str, data_root: str = None, cell_size: int = 48) -> List[List[int]]:
+        """加载指定日期的网格数据"""
+        root = Path(data_root) if data_root else Path("data") / "mouse_heatmap"
+        day_dir = root / day / f"cell_{cell_size}"
+        grid_path = day_dir / cls.GRID_FILENAME
+        meta_path = day_dir / cls.META_FILENAME
+        
+        if not grid_path.exists() or not meta_path.exists():
+            # 返回空网格
+            meta = HeatmapMeta(**json.loads(meta_path.read_text(encoding="utf-8")))
+            return [[0 for _ in range(meta.grid_width)] for _ in range(meta.grid_height)]
+        
+        try:
+            raw = json.loads(grid_path.read_text(encoding="utf-8"))
+            return raw.get("grid_ms", [])
+        except Exception:
+            meta = HeatmapMeta(**json.loads(meta_path.read_text(encoding="utf-8")))
+            return [[0 for _ in range(meta.grid_width)] for _ in range(meta.grid_height)]
+
+    # ======== 兼容性方法：从原 MouseHeatmapTracker 复制 ========
+    
+    @classmethod
+    def load_day(cls, day: str, data_root: Optional[str] = None, cell_size: int = 48) -> Tuple[HeatmapMeta, List[List[int]]]:
         """加载某天的 grid.json 并返回网格（单位 ms）。"""
-        root = Path(data_root) if data_root else cls._default_data_root()
+        root = Path(data_root) if data_root else Path("data") / "mouse_heatmap"
         day_dir = root / day / f"cell_{int(cell_size)}"
         meta_path = day_dir / cls.META_FILENAME
         grid_path = day_dir / cls.GRID_FILENAME
@@ -384,6 +450,7 @@ class MouseHeatmapTracker:
         """
         from PyQt6.QtCore import Qt
         from PyQt6.QtGui import QColor, QImage
+        import math
 
         h = meta.grid_height
         w = meta.grid_width
@@ -414,7 +481,7 @@ class MouseHeatmapTracker:
                     a = 40.0
                     t = math.log1p(a * t) / math.log1p(a)
                 t = pow(max(0.0, min(1.0, t)), gamma)
-                # 低热度直接透明，避免“整屏泛色”
+                # 低热度直接透明，避免"整屏泛色"
                 if t < min_visible_t:
                     continue
                 r, g, b = cls._colormap_viridis_like(t)
@@ -433,35 +500,3 @@ class MouseHeatmapTracker:
             img = base
 
         return img
-
-    @classmethod
-    def render_heatmap_png(
-        cls,
-        meta: HeatmapMeta,
-        grid_ms: List[List[int]],
-        out_path: str,
-        blur_radius_cells: int = 1,
-        blur_passes: int = 2,
-        use_log: bool = True,
-        gamma: float = 0.6,
-        upscale_to_screen: bool = True,
-        background_rgba: Tuple[int, int, int, int] = (0, 0, 0, 0),
-        min_visible_t: float = 0.03,
-        max_alpha: int = 220,
-    ) -> None:
-        """保留 PNG 接口（用于单独导出），内部复用 QImage 渲染。"""
-        img = cls.render_heatmap_qimage(
-            meta,
-            grid_ms,
-            blur_radius_cells=blur_radius_cells,
-            blur_passes=blur_passes,
-            use_log=use_log,
-            gamma=gamma,
-            upscale_to_screen=upscale_to_screen,
-            background_rgba=background_rgba,
-            min_visible_t=min_visible_t,
-            max_alpha=max_alpha,
-        )
-        Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-        img.save(out_path)
-

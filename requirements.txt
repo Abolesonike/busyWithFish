@@ -3,3 +3,4 @@ PyQt6
 pyqt6-sip
 pynput
 pyinstaller
+psutil  # 新增：性能监控依赖

@@ -10,8 +10,9 @@ from utils.TcpClient import TcpClient
 from utils.systemUtils import get_resource_path, generate_uid
 from utils.KeypressRecorder import KeypressRecorder
 from utils.KeyboardVisualizer import KeyboardVisualizerDialog
-from utils.MouseHeatmapTracker import MouseHeatmapTracker
+from utils.MouseHeatmapTracker import OptimizedMouseHeatmapTracker  # 替换为优化版本
 from utils.MouseHeatmapVisualizer import MouseHeatmapDialog
+from utils.DataCacheManager import shutdown_cache_manager  # 新增导入
 
 SNAP_TO_EDGE_MARGIN = 50  # 边缘吸附范围
 TRAY_ICON_IMG = 'resource/icon/fish.ico' # 任务栏图标
@@ -75,9 +76,9 @@ class Win(QMainWindow):
                   scr.height() - self.height() - 50)
         self.original_geom = self.frameGeometry()
 
-        # 边缘吸附
+        # 边缘吸附（优化：降低频率）
         self.edge_snap_timer = QTimer(self)
-        self.edge_snap_timer.setInterval(200)
+        self.edge_snap_timer.setInterval(500)  # 从200ms改为500ms
         self.edge_snap_timer.timeout.connect(self.snap_to_edge)
 
         # 托盘任务图标
@@ -99,12 +100,13 @@ class Win(QMainWindow):
         # 启动鼠标监听器
         self.keypressRecorder.mouse_recorder.start_listening()
 
-        # 鼠标热力图跟踪器（后台线程）
-        self.mouse_heatmap_tracker = MouseHeatmapTracker(
+        # 鼠标热力图跟踪器（优化版本）
+        self.mouse_heatmap_tracker = OptimizedMouseHeatmapTracker(
             cell_size=48,
             data_root="data/mouse_heatmap",
-            sample_interval_ms=50,
-            flush_interval_s=30.0,
+            max_buffer_size=2000,      # 增大缓冲区
+            flush_threshold=1000,      # 更大的刷盘阈值
+            inactive_timeout=3.0       # 延长静止检测时间
         )
         self.mouse_heatmap_tracker.start()
 
@@ -268,7 +270,7 @@ class Win(QMainWindow):
     def set_offline(self):
         """设置为离线状态"""
         self.is_online = False
-        self.client.stop()
+        self.client.stop(graceful=True)  # 优雅关闭
         # 根据当前在线状态更新连接菜单项的可用性
         self.connect_action.setEnabled(self.is_online)
         self.tray_icon.showMessage(
@@ -377,13 +379,20 @@ class Win(QMainWindow):
         self.reBindKeyBoardListener()
 
     def quit_app(self):
-        """退出应用程序"""
+        """退出应用程序（优化版）"""
         # 停止后台线程
         try:
             if hasattr(self, "mouse_heatmap_tracker"):
                 self.mouse_heatmap_tracker.stop()
         except Exception:
             pass
+        
+        # 关闭缓存管理器
+        try:
+            shutdown_cache_manager()
+        except Exception:
+            pass
+            
         QApplication.quit()
 
     def closeEvent(self, event):
@@ -422,7 +431,7 @@ class Win(QMainWindow):
     # ---------- 拖拽 end---------- #
 
     def snap_to_edge(self):
-        """边缘吸附"""
+        """边缘吸附（优化版）"""
         if self.currentWidget.animating:  # 动画期间直接返回
             return
         self.edge_snap_timer.stop()

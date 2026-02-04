@@ -14,14 +14,14 @@ from PyQt6.QtWidgets import (
     QDateEdit,
 )
 
-from utils.MouseHeatmapTracker import MouseHeatmapTracker
+from utils.MouseHeatmapTracker import OptimizedMouseHeatmapTracker as MouseHeatmapTracker  # 使用优化版本
 
 
 class MouseHeatmapDialog(QDialog):
     """
     鼠标热力图可视化弹窗（类似键盘按键可视化）。
 
-    - 默认展示“今天”的热力图
+    - 默认展示"今天"的热力图
     - 可通过日期选择器从 data 目录中查看历史数据
     """
 
@@ -73,7 +73,7 @@ class MouseHeatmapDialog(QDialog):
 
         main_layout.addWidget(self.scroll)
 
-        # 默认加载“今天”数据
+        # 默认加载"今天"数据
         self.refresh_image()
         # 延迟一次缩放，确保第一次打开时根据最终布局尺寸适配
         QTimer.singleShot(0, self._update_scaled_pixmap)
@@ -156,4 +156,3 @@ class MouseHeatmapDialog(QDialog):
         )
         self.image_label.setPixmap(scaled)
         self.image_label.setScaledContents(False)
-

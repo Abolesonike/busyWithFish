@@ -1,6 +1,6 @@
 import sys
 
-from PyQt6.QtCore import QPropertyAnimation, Qt, QTimer, pyqtSlot
+from PyQt6.QtCore import QPropertyAnimation, Qt, QTimer, pyqtSlot, QEasingCurve
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtWidgets import QLabel
 
@@ -17,8 +17,10 @@ WOOD_FISH_SND = 'woodfish.wav'
 SCALE = 0.2
 # 按下时下沉像素
 DOWN_OFFSET = 8
-# 回弹动画时长
-BOUNCE_BACK_MS = 80
+# 回弹动画时长（优化：缩短动画时间）
+BOUNCE_BACK_MS = 60  # 从80ms改为60ms
+# 动画缓动曲线（优化：使用更自然的缓动）
+ANIMATION_EASING = QEasingCurve.Type.OutBack
 # ---------------------------------------
 
 class WoodFishWidget(PWidget):
@@ -69,6 +71,7 @@ class WoodFishWidget(PWidget):
         # 动画对象：整个窗口（self）
         self.animation = QPropertyAnimation(self, b"geometry")
         self.animation.setDuration(BOUNCE_BACK_MS)
+        self.animation.setEasingCurve(ANIMATION_EASING)  # 添加缓动效果
         self.original_geom = self.frameGeometry()  # 记录原始位置
 
     # ---------- 动画开始 ----------
@@ -89,8 +92,8 @@ class WoodFishWidget(PWidget):
         self.animation.setStartValue(self.frameGeometry())
         self.animation.setEndValue(self.original_geom)
         self.animation.start()
-        # 等动画彻底结束再允许吸附（多加 50 ms 保险）
-        QTimer.singleShot(self.animation.duration() + 50, self._release_anim_lock)
+        # 优化：减少等待时间
+        QTimer.singleShot(self.animation.duration() + 20, self._release_anim_lock)  # 从50ms改为20ms
 
     # ---------- 显示功德 ----------
     @pyqtSlot()
@@ -104,4 +107,5 @@ class WoodFishWidget(PWidget):
         # 居中放在窗口最顶部
         self.merit_label.move((self.width() - self.merit_label.width()) // 2, 10)
         self.merit_label.show()
-        QTimer.singleShot(800, self.merit_label.hide)  # 1.5 秒后消失
+        # 优化：缩短显示时间
+        QTimer.singleShot(600, self.merit_label.hide)  # 从800ms改为600ms

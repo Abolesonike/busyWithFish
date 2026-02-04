@@ -1,4 +1,3 @@
 from .MousePositionViewer import MousePosition, MousePositionViewer
-from .MouseHeatmapTracker import HeatmapMeta, MouseHeatmapTracker
+from .MouseHeatmapTracker import HeatmapMeta, OptimizedMouseHeatmapTracker as MouseHeatmapTracker
 from .MouseHeatmapVisualizer import MouseHeatmapDialog
-
