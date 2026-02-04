@@ -115,6 +115,64 @@ class KeyboardKeyWidget(QLabel):
         return key_display_names.get(key_name, key_name.upper())
 
 
+class MouseKeyWidget(QLabel):
+    """自定义鼠标按键控件，用于显示鼠标按键颜色"""
+    
+    def __init__(self, key_name, press_count=0, max_count=100):
+        super().__init__()
+        self.key_name = key_name
+        self.press_count = press_count
+        self.max_count = max_count
+
+        # 根据按压次数计算颜色插值，从白色(255,255,255)渐变到深蓝色(30,144,255)
+        ratio = min(press_count / self.max_count, 1.0)
+        
+        # 白色起始值 (255, 255, 255)
+        start_r, start_g, start_b = 255, 255, 255
+        # 目标深蓝色值 (30, 144, 255)
+        end_r, end_g, end_b = 30, 144, 255
+        
+        # 计算当前颜色值
+        r = int(start_r + (end_r - start_r) * ratio)
+        g = int(start_g + (end_g - start_g) * ratio)
+        b = int(start_b + (end_b - start_b) * ratio)
+        
+        bg_color = f"rgb({r}, {g}, {b})"
+        
+        # 设置样式：背景色从白色渐变到深蓝色，字体为黑色
+        self.setStyleSheet(
+            f"background-color: {bg_color}; "
+            f"border: 1px solid #888; "
+            f"border-radius: 4px; "
+            f"padding: 4px; "
+            f"font-weight: bold; "
+            f"color: black;"
+        )
+        
+        # 设置按键文本
+        display_text = self._format_key_name(key_name)
+        self.setText(display_text)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setMinimumSize(20, 20)
+        
+        # 设置提示信息
+        self.setToolTip(f"{key_name}: {press_count} 次")
+
+    def _format_key_name(self, key_name):
+        """格式化鼠标按键名称以便显示"""
+        mouse_key_names = {
+            'mouse_left': '左键',
+            'mouse_right': '右键',
+            'mouse_middle': '中键',
+            'mouse_x1': '侧键1',
+            'mouse_x2': '侧键2',
+            'scroll_up': '滚轮↑',
+            'scroll_down': '滚轮↓'
+        }
+        
+        return mouse_key_names.get(key_name, key_name)
+
+
 class KeyboardVisualizerDialog(QDialog):
     """键盘可视化弹窗对话框"""
     
@@ -185,8 +243,10 @@ class KeyboardVisualizerDialog(QDialog):
         
         # 获取指定日期的按键记录
         keys_data = self.keypress_recorder.get_daily_all_keys(selected_date)
+        # 获取指定日期的鼠标按键记录
+        mouse_data = self.keypress_recorder.get_daily_mouse_buttons(selected_date)
         
-        if not keys_data:
+        if not keys_data and not mouse_data:
             # 如果指定日期没有按键记录，显示提示
             hint_label = QLabel(f"{selected_date} 暂无按键记录")
             hint_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -194,8 +254,9 @@ class KeyboardVisualizerDialog(QDialog):
             self.keyboard_grid.addWidget(hint_label, 0, 0)
             return
         
-        # 固定最大按压次数为500
-        max_count = 500
+        # 固定最大按压次数为500（键盘）和100（鼠标）
+        max_key_count = 500
+        max_mouse_count = 100
         
         # 定义键盘布局（简化版）
         keyboard_layout = [
@@ -227,7 +288,7 @@ class KeyboardVisualizerDialog(QDialog):
                 press_count = keys_data.get(key, 0)
                 
                 # 创建按键控件
-                key_widget = KeyboardKeyWidget(key, press_count, max_count)
+                key_widget = KeyboardKeyWidget(key, press_count, max_key_count)
 
                 if key == 'space':
                     self.keyboard_grid.addWidget(key_widget, row_idx, col_idx, 1, 4)
@@ -242,6 +303,29 @@ class KeyboardVisualizerDialog(QDialog):
                     self.keyboard_grid.addWidget(key_widget, row_idx, col_idx, 1, 1)
                     col_idx += 1
             row_idx += 1
+
+        # 添加鼠标按键部分
+        if mouse_data:
+            mouse_title = QLabel("\n鼠标按键统计:")
+            mouse_title.setStyleSheet("font-size: 14px; font-weight: bold; padding-top: 10px;")
+            self.keyboard_grid.addWidget(mouse_title, row_idx, 0, 1, len(keyboard_layout[0]))
+            row_idx += 1
+
+            # 定义鼠标按键布局
+            mouse_layout = [
+                ['mouse_left', 'mouse_right', 'mouse_middle'],
+                ['mouse_x1', 'mouse_x2'],
+                ['scroll_up', 'scroll_down']
+            ]
+
+            for mouse_row in mouse_layout:
+                col_idx = 0
+                for mouse_key in mouse_row:
+                    press_count = mouse_data.get(mouse_key, 0)
+                    mouse_widget = MouseKeyWidget(mouse_key, press_count, max_mouse_count)
+                    self.keyboard_grid.addWidget(mouse_widget, row_idx, col_idx)
+                    col_idx += 1
+                row_idx += 1
 
         # 为不在标准布局中的按键单独添加
         extra_keys = []
@@ -259,7 +343,7 @@ class KeyboardVisualizerDialog(QDialog):
 
             for i, key in enumerate(extra_keys):
                 press_count = keys_data.get(key, 0)
-                key_widget = KeyboardKeyWidget(key, press_count, max_count)
+                key_widget = KeyboardKeyWidget(key, press_count, max_key_count)
                 col_pos = i % len(keyboard_layout[0])
                 row_pos = row_idx + (i // len(keyboard_layout[0]))
                 self.keyboard_grid.addWidget(key_widget, row_pos, col_pos)

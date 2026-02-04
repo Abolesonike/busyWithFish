@@ -1,7 +1,7 @@
 from PyQt6.QtCore import Qt, pyqtSignal, QPoint, QTimer
 from PyQt6.QtGui import QPixmap, QIcon, QAction, QActionGroup
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QApplication, QSystemTrayIcon, QMenu, QMainWindow, QStackedWidget, \
-    QHBoxLayout, QDialog, QLineEdit, QLabel, QPushButton, QMessageBox
+    QHBoxLayout, QDialog, QLineEdit, QLabel, QPushButton
 from pynput import keyboard
 
 from character.GifWidget import GifWidget
@@ -96,6 +96,8 @@ class Win(QMainWindow):
         self.client.start()
 
         self.keypressRecorder = KeypressRecorder()
+        # 启动鼠标监听器
+        self.keypressRecorder.mouse_recorder.start_listening()
 
         # 鼠标热力图跟踪器（后台线程）
         self.mouse_heatmap_tracker = MouseHeatmapTracker(
