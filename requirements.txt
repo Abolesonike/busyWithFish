@@ -3,4 +3,7 @@ PyQt6
 pyqt6-sip
 pynput
 pyinstaller
-psutil  # 新增：性能监控依赖
+psutil  # 性能监控依赖
+openai  # 用于调用百炼API
+markdown  # 用于Markdown格式渲染
+dotenv # 读取环境变量配置

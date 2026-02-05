@@ -7,7 +7,8 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
-        ('resource', 'resource')
+        ('resource', 'resource'),
+        ('.env', '.')  # 将 .env 文件添加到可执行文件同级目录
     ],
     hiddenimports=[],
     hookspath=[],

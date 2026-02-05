@@ -95,17 +95,28 @@ class DataCacheManager:
         today = str(date.today())
         with self._lock:
             if today not in self._cache:
-                # 创建新的今日记录
+                # 创建新的今日记录，确保所有必要字段都存在
                 self._cache[today] = {
                     'date': today,
-                    'keys': {},
+                    'keys': {},           # 确保这个字段存在
                     'merit': 0,
-                    'mouse_buttons': {},
+                    'mouse_buttons': {},  # 确保这个字段存在
                     'mouse_total': 0
                 }
                 self._dirty_keys.add(today)
             
-            return self._cache[today]
+            # 确保返回的记录包含所有必要字段
+            record = self._cache[today]
+            if 'keys' not in record:
+                record['keys'] = {}
+            if 'mouse_buttons' not in record:
+                record['mouse_buttons'] = {}
+            if 'merit' not in record:
+                record['merit'] = 0
+            if 'mouse_total' not in record:
+                record['mouse_total'] = 0
+            
+            return record
     
     def increment_key_count(self, key: str, count: int = 1):
         """增加按键计数（批量操作）"""

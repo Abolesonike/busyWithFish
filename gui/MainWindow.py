@@ -13,6 +13,8 @@ from utils.KeyboardVisualizer import KeyboardVisualizerDialog
 from utils.MouseHeatmapTracker import OptimizedMouseHeatmapTracker  # 替换为优化版本
 from utils.MouseHeatmapVisualizer import MouseHeatmapDialog
 from utils.DataCacheManager import shutdown_cache_manager  # 新增导入
+from utils.BailianAnalyzer import BailianAnalyzer
+from gui.AnalysisResultDialog import AnalysisResultDialog, LoadingDialog
 
 SNAP_TO_EDGE_MARGIN = 50  # 边缘吸附范围
 TRAY_ICON_IMG = 'resource/icon/fish.ico' # 任务栏图标
@@ -109,6 +111,14 @@ class Win(QMainWindow):
             inactive_timeout=3.0       # 延长静止检测时间
         )
         self.mouse_heatmap_tracker.start()
+
+        # 初始化AI分析器
+        self.bailian_analyzer = BailianAnalyzer()
+        # 连接分析器信号
+        #self.bailian_analyzer.analysis_started.connect(self.on_analysis_started)
+        self.bailian_analyzer.analysis_completed.connect(self.on_analysis_completed)
+        self.bailian_analyzer.analysis_error.connect(self.on_analysis_error)
+        self.bailian_analyzer.progress_updated.connect(self.on_progress_updated)
 
 
 
@@ -207,6 +217,11 @@ class Win(QMainWindow):
         self.mouse_heatmap_action.triggered.connect(self.open_mouse_heatmap)
         self.tray_menu.addAction(self.mouse_heatmap_action)
 
+        # AI分析动作
+        self.ai_analysis_action = QAction("🤖 AI智能分析", self)
+        self.ai_analysis_action.triggered.connect(self.start_ai_analysis)
+        self.tray_menu.addAction(self.ai_analysis_action)
+
         # 分隔线
         self.tray_menu.addSeparator()
 
@@ -241,6 +256,97 @@ class Win(QMainWindow):
         self.mouse_heatmap_dialog.show()
         self.mouse_heatmap_dialog.raise_()
         self.mouse_heatmap_dialog.activateWindow()
+
+    def start_ai_analysis(self):
+        """启动AI分析"""
+        # 检查API密钥配置
+        if not self.bailian_analyzer.api_key:
+            from PyQt6.QtWidgets import QMessageBox
+            reply = QMessageBox.question(
+                self,
+                "API密钥未配置",
+                "尚未配置百炼大模型API密钥，是否前往配置？\n\n您需要：\n1. 注册阿里云账号\n2. 开通百炼服务\n3. 获取API密钥\n4. 设置DASHSCOPE_API_KEY环境变量",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            
+            if reply == QMessageBox.StandardButton.Yes:
+                self.show_api_config_help()
+            return
+        
+        # 显示加载对话框
+        self.loading_dialog = LoadingDialog(self)
+        self.loading_dialog.show()
+        
+        # 异步执行分析
+        self.bailian_analyzer.analyze_async(days=1)
+    
+    def show_api_config_help(self):
+        """显示API配置帮助"""
+        help_text = """📝 百炼大模型API配置指南
+
+1. 访问阿里云官网注册账号
+   https://www.aliyun.com/
+
+2. 开通百炼平台服务
+   https://help.aliyun.com/zh/bailian/
+
+3. 获取API密钥
+   - 进入百炼控制台
+   - 点击左侧导航栏的"密钥管理"
+   - 单击"创建API-KEY"
+   - 复制生成的API密钥
+
+4. 配置环境变量
+   Windows:
+   set DASHSCOPE_API_KEY=your_api_key_here
+   
+   或在系统环境变量中添加:
+   变量名: DASHSCOPE_API_KEY
+   变量值: your_actual_api_key
+
+5. 重启应用程序使配置生效
+
+💡 提示：也可以在代码中直接设置：
+self.bailian_analyzer.set_api_key("your_api_key_here")"""
+        
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.information(self, "API配置帮助", help_text)
+    
+    def on_analysis_started(self):
+        """分析开始回调"""
+        if hasattr(self, 'loading_dialog'):
+            self.loading_dialog.update_progress(0, "开始分析...")
+    
+    def on_progress_updated(self, percentage: int, message: str):
+        """进度更新回调"""
+        if hasattr(self, 'loading_dialog'):
+            self.loading_dialog.update_progress(percentage, message)
+    
+    def on_analysis_completed(self, result: dict):
+        """分析完成回调"""
+        # 关闭加载对话框
+        if hasattr(self, 'loading_dialog'):
+            self.loading_dialog.accept()
+            del self.loading_dialog
+        
+        # 显示结果对话框
+        if not hasattr(self, 'analysis_result_dialog'):
+            self.analysis_result_dialog = AnalysisResultDialog(self)
+        self.analysis_result_dialog.show_analysis_result(result)
+        self.analysis_result_dialog.show()
+        self.analysis_result_dialog.raise_()
+        self.analysis_result_dialog.activateWindow()
+    
+    def on_analysis_error(self, error_message: str):
+        """分析错误回调"""
+        # 关闭加载对话框
+        if hasattr(self, 'loading_dialog'):
+            self.loading_dialog.reject()
+            del self.loading_dialog
+        
+        # 显示错误信息
+        from PyQt6.QtWidgets import QMessageBox
+        QMessageBox.critical(self, "分析失败", f"AI分析过程中发生错误:\n\n{error_message}")
 
     def copy_uid_to_clipboard(self):
         """ 复制UID """
@@ -380,18 +486,29 @@ class Win(QMainWindow):
 
     def quit_app(self):
         """退出应用程序（优化版）"""
+        # 停止AI分析线程
+        try:
+            if hasattr(self, "bailian_analyzer") and hasattr(self.bailian_analyzer, "worker_thread"):
+                worker = self.bailian_analyzer.worker_thread
+                if worker and worker.isRunning():
+                    worker.stop()
+                    worker.wait(2000)  # 等待最多2秒
+        except Exception as e:
+            print(f"Warning: Error stopping analysis worker: {e}")
+        
         # 停止后台线程
         try:
             if hasattr(self, "mouse_heatmap_tracker"):
                 self.mouse_heatmap_tracker.stop()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Warning: Error stopping heatmap tracker: {e}")
         
         # 关闭缓存管理器
         try:
+            from utils.DataCacheManager import shutdown_cache_manager
             shutdown_cache_manager()
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"Warning: Error shutting down cache manager: {e}")
             
         QApplication.quit()
 
