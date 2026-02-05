@@ -6,4 +6,3 @@ pyinstaller
 psutil  # 性能监控依赖
 openai  # 用于调用百炼API
 markdown  # 用于Markdown格式渲染
-dotenv # 读取环境变量配置

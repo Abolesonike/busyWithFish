@@ -11,17 +11,37 @@ from PyQt6.QtCore import QObject, pyqtSignal, QThread
 from utils.DataCacheManager import get_data_cache_manager
 from utils.MouseHeatmapTracker import OptimizedMouseHeatmapTracker
 
-from dotenv import load_dotenv
 
-def get_env_file_path():
-    """获取 .env 文件的路径"""
+def get_config_file_path():
+    """获取配置文件的路径"""
     if getattr(sys, 'frozen', False):
-        # 如果是打包后的可执行文件，从同级目录查找 .env
-        env_path = os.path.join(os.path.dirname(sys.executable), '.env')
+        # 如果是打包后的可执行文件，从同级目录查找配置文件
+        config_path = os.path.join(os.path.dirname(sys.executable), 'config.json')
     else:
-        # 如果是开发环境，从当前工作目录查找 .env
-        env_path = os.path.join(os.getcwd(), '.env')
-    return env_path
+        # 如果是开发环境，从当前工作目录查找配置文件
+        config_path = os.path.join(os.getcwd(), 'config.json')
+    return config_path
+
+
+def load_config():
+    """加载配置文件"""
+    config_path = get_config_file_path()
+    default_config = {
+        "DASHSCOPE_API_KEY": "",
+        "model_name": "qwen3-max-2026-01-23",
+        "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    }
+    
+    if os.path.exists(config_path):
+        try:
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+                # 合并默认配置和文件配置
+                default_config.update(config)
+        except Exception as e:
+            print(f"配置文件读取失败: {e}")
+    
+    return default_config
 
 
 class BailianAnalyzer(QObject):
@@ -36,18 +56,22 @@ class BailianAnalyzer(QObject):
     analysis_error = pyqtSignal(str)       # 发送错误信息
     progress_updated = pyqtSignal(int, str)  # 进度更新 (百分比, 描述)
     
-    def __init__(self, api_key: str = None, model_name: str = "qwen3-max-2026-01-23"):
+    def __init__(self, api_key: str = None, model_name: str = None):
         super().__init__()
-        self.api_key = api_key or os.getenv("DASHSCOPE_API_KEY")
-        # 如果环境变量未取到，则加载 .env 文件
-        if not self.api_key:
-            env_file = get_env_file_path()
-            if os.path.exists(env_file):
-                load_dotenv(env_file)
-                self.api_key = os.getenv("DASHSCOPE_API_KEY")  # 再次尝试从环境变量获取
-        self.model_name = model_name
-        # 使用OpenAI兼容的API格式
-        self.base_url = "https://dashscope.aliyuncs.com/compatible-mode/v1"
+        
+        # 加载配置
+        config = load_config()
+        
+        # 设置API密钥
+        self.api_key = api_key or config.get("DASHSCOPE_API_KEY", "")
+        if os.getenv("DASHSCOPE_API_KEY") :
+            self.api_key = os.getenv("DASHSCOPE_API_KEY")
+        self.model_name = model_name or config.get("MODEL_NAME", "qwen-plus")
+        if os.getenv("MODEL_NAME") :
+            self.api_key = os.getenv("DASHSCOPE_API_KEY")
+        self.base_url = config.get("BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
+        if os.getenv("BASE_URL") :
+            self.api_key = os.getenv("DASHSCOPE_API_KEY")
         
         # 数据源
         self.cache_manager = get_data_cache_manager()

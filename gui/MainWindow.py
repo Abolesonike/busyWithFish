@@ -265,7 +265,7 @@ class Win(QMainWindow):
             reply = QMessageBox.question(
                 self,
                 "API密钥未配置",
-                "尚未配置百炼大模型API密钥，是否前往配置？\n\n您需要：\n1. 注册阿里云账号\n2. 开通百炼服务\n3. 获取API密钥\n4. 设置DASHSCOPE_API_KEY环境变量",
+                "尚未配置百炼大模型API密钥，是否前往配置？\n\n您需要：\n1. 注册阿里云账号\n2. 开通百炼服务\n3. 获取API密钥\n4. 设置配置文件",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
             )
             
@@ -296,18 +296,15 @@ class Win(QMainWindow):
    - 单击"创建API-KEY"
    - 复制生成的API密钥
 
-4. 配置环境变量
-   Windows:
-   set DASHSCOPE_API_KEY=your_api_key_here
+4. 修改配置
+   修改配置文件：config.json
+   "DASHSCOPE_API_KEY": "your_api_key_here", # API密钥
+   "MODEL_NAME": "model_name" # 模型名称
    
-   或在系统环境变量中添加:
-   变量名: DASHSCOPE_API_KEY
-   变量值: your_actual_api_key
+   模型列表：https://help.aliyun.com/zh/model-studio/getting-started/models
 
 5. 重启应用程序使配置生效
-
-💡 提示：也可以在代码中直接设置：
-self.bailian_analyzer.set_api_key("your_api_key_here")"""
+"""
         
         from PyQt6.QtWidgets import QMessageBox
         QMessageBox.information(self, "API配置帮助", help_text)
