@@ -201,10 +201,20 @@ class Win(QMainWindow):
             lambda: self.switch_widget_gif(1, "resource/gif/gezi_02.gif", self.gifWidget, 8))
         self.character_menu.addAction(self.gezi_02_action)
 
-        self.gezi_03_action = QAction("疯狂鸽子-大跳", self)
-        self.gezi_03_action.triggered.connect(
-            lambda: self.switch_widget_gif(1, "resource/gif/gezi_03.gif", self.gifWidget, 2))
-        self.character_menu.addAction(self.gezi_03_action)
+        self.gezi_04_action = QAction("疯狂鸽子-摇摆", self)
+        self.gezi_04_action.triggered.connect(
+            lambda: self.switch_widget_gif(1, "resource/gif/gezi_04.gif", self.gifWidget, 4))
+        self.character_menu.addAction(self.gezi_04_action)
+
+        self.gezi_05_action = QAction("疯狂鸽子-背卧撑", self)
+        self.gezi_05_action.triggered.connect(
+            lambda: self.switch_widget_gif(1, "resource/gif/gezi_05.gif", self.gifWidget, 8))
+        self.character_menu.addAction(self.gezi_05_action)
+
+        self.gezi_06_action = QAction("疯狂鸽子-空中转体360", self)
+        self.gezi_06_action.triggered.connect(
+            lambda: self.switch_widget_gif(1, "resource/gif/gezi_06.gif", self.gifWidget, 3))
+        self.character_menu.addAction(self.gezi_06_action)
 
         # 分隔线
         self.tray_menu.addSeparator()
