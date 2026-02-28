@@ -73,8 +73,7 @@ class GifWidget(PWidget):
     def animate(self, data=None):
         if self.playing:  # 还没播完，直接忽略
             return
-        # 每次播放都从第一段开始
-        self.cur_seg = 0
+        
         # 显示敲击的键
         key_text = self._get_key_text(data)
         self.key_label.setText(key_text)
@@ -113,15 +112,13 @@ class GifWidget(PWidget):
         if self.movie.currentFrameNumber() >= self._end_frame:
             self.movie.setPaused(True)
             self.poller.stop()
-            # 检查是否还有下一段
-            if self.cur_seg < self.loop_count - 1:
-                # 播放下一段
-                self.cur_seg += 1
-                self._play_next_segment()
-            else:
-                # 所有段都播放完毕
-                self.playing = False
-                # 隐藏键标签
-                self.key_label.hide()
-                # 回到第一帧
+            # 播放下一段
+            self.cur_seg += 1
+            # 如果超出总段数，重置到第一段
+            if self.cur_seg >= self.loop_count:
+                self.cur_seg = 0
                 self.movie.jumpToFrame(0)
+            # 只播放当前段，不自动播放下一段
+            self.playing = False
+            # 隐藏键标签
+            self.key_label.hide()

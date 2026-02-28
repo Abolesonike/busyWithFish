@@ -188,13 +188,23 @@ class Win(QMainWindow):
 
         self.desktop_pet_action = QAction("pop cat", self)
         self.desktop_pet_action.triggered.connect(
-            lambda: self.switch_widget_gif(1, "resource/gif/popcat.gif", self.gifWidget, 3))
+            lambda: self.switch_widget_gif(1, "resource/gif/popcat.gif", self.gifWidget, 1))
         self.character_menu.addAction(self.desktop_pet_action)
 
-        self.zen_circle_action = QAction("铁山靠（施工中）", self)
-        # self.zen_circle_action.triggered.connect(
-        #     lambda: self.switch_widget_gif(1, "resource/gif/tsk.gif", self.gifWidget, 4))
-        self.character_menu.addAction(self.zen_circle_action)
+        self.gezi_01_action = QAction("疯狂鸽子-摆手", self)
+        self.gezi_01_action.triggered.connect(
+            lambda: self.switch_widget_gif(1, "resource/gif/gezi_01.gif", self.gifWidget, 4))
+        self.character_menu.addAction(self.gezi_01_action)
+
+        self.gezi_02_action = QAction("疯狂鸽子-摇头", self)
+        self.gezi_02_action.triggered.connect(
+            lambda: self.switch_widget_gif(1, "resource/gif/gezi_02.gif", self.gifWidget, 8))
+        self.character_menu.addAction(self.gezi_02_action)
+
+        self.gezi_03_action = QAction("疯狂鸽子-大跳", self)
+        self.gezi_03_action.triggered.connect(
+            lambda: self.switch_widget_gif(1, "resource/gif/gezi_03.gif", self.gifWidget, 2))
+        self.character_menu.addAction(self.gezi_03_action)
 
         # 分隔线
         self.tray_menu.addSeparator()
